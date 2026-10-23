@@ -36,6 +36,20 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
       const res = await request(app).get('/');
       expect(res.status).toBe(200);
       expect(res.body.nombre).toContain('Defia Book');
+      expect(res.body.swaggerUi).toBeDefined();
+    });
+
+    it('Sirve la especificación OpenAPI de Swagger en /api/docs.json', async () => {
+      const res = await request(app).get('/api/docs.json');
+      expect(res.status).toBe(200);
+      expect(res.body.openapi).toBe('3.0.3');
+      expect(res.body.info.title).toContain('Defia Book');
+    });
+
+    it('Sirve la interfaz HTML de Swagger UI en /api/docs/', async () => {
+      const res = await request(app).get('/api/docs/');
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('swagger-ui');
     });
   });
 

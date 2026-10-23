@@ -25,6 +25,8 @@ async function bootstrap() {
     console.log(`[SEED] Cliente 1 (PEN - Caso 1): ${cliente1Id}`);
     console.log(`[SEED] Cliente 2 (USD - Caso 2): ${cliente2Id}`);
     console.log('----------------------------------------------------------------');
+    console.log(`📖 Documentación Swagger UI: http://${HOST}:${PORT}/api/docs`);
+    console.log('----------------------------------------------------------------');
     console.log('Endpoints disponibles:');
     console.log(`  POST http://${HOST}:${PORT}/api/creditos/simular`);
     console.log(`  POST http://${HOST}:${PORT}/api/creditos/emitir`);
