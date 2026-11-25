@@ -23,6 +23,64 @@ export class TiendaController {
     }
   };
 
+  actualizarMiTienda = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const tiendaId = req.user?.tiendaId ?? req.user?.id;
+      if (!tiendaId) {
+        res.status(401).json({
+          status: 'error',
+          code: 'UNAUTHORIZED',
+          message: 'No se pudo identificar la tienda autenticada',
+        });
+        return;
+      }
+
+      const tiendaActual = await this.repos.tiendas.obtenerPorId(tiendaId);
+      if (!tiendaActual) {
+        res.status(404).json({
+          status: 'error',
+          code: 'NOT_FOUND',
+          message: 'Tienda no encontrada',
+        });
+        return;
+      }
+
+      if (!this.repos.tiendas.actualizar) {
+        throw new Error('Operación de actualización de tienda no soportada');
+      }
+
+      const body = req.body;
+      const nombreFinal = body.nombreComercial ?? body.nombre ?? tiendaActual.nombreComercial ?? tiendaActual.nombre;
+
+      const actualizada = await this.repos.tiendas.actualizar(tiendaId, {
+        ...(body.razonSocial !== undefined && { razonSocial: body.razonSocial }),
+        ...(body.nombreComercial !== undefined && { nombreComercial: body.nombreComercial, nombre: body.nombreComercial }),
+        ...(body.nombre !== undefined && { nombre: body.nombre, nombreComercial: body.nombreComercial ?? body.nombre }),
+        ...(body.direccion !== undefined && { direccion: body.direccion }),
+        ...(body.telefono !== undefined && { telefono: body.telefono }),
+        ...(body.monedaDefecto !== undefined && { monedaDefecto: body.monedaDefecto }),
+        ...(body.horaCorte !== undefined && { horaCorte: body.horaCorte }),
+      });
+
+      await this.repos.bitacora.registrar({
+        tiendaId,
+        usuario: req.user?.email ?? 'ADMIN_NEGOCIO',
+        accion: 'EDITAR_TIENDA',
+        entidad: 'Tienda',
+        idEntidad: tiendaId,
+        detalle: `Configuración de tienda ${nombreFinal} actualizada`,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        mensaje: 'Configuración de la tienda actualizada exitosamente',
+        data: actualizada ? sanitizeTienda(actualizada) : null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   cambiarEstado = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = req.params.id as string;

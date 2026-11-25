@@ -55,6 +55,7 @@ export interface Producto {
   sku: string;
   nombre: string;
   marca?: string;
+  proveedor?: string;
   descripcion?: string;
   unidadMedida?: string;
   imagenUrl?: string;

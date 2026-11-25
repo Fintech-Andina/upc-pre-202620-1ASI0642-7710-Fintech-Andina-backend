@@ -410,6 +410,31 @@ Desarrollado para **Fintech Andina S.A.C.** implementando fielmente el marco de 
         },
       },
     },
+    '/api/pagos/previsualizar': {
+      post: {
+        tags: ['Pagos'],
+        summary: 'Previsualizar liquidación de cuota(s), mora e imputación legal sin persistir',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['clienteId'],
+                properties: {
+                  clienteId: { type: 'string' },
+                  cuotaIds: { type: 'array', items: { type: 'string' } },
+                  fPago: { type: 'string', format: 'date' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Previsualización calculada' },
+        },
+      },
+    },
     '/api/pagos/liquidar': {
       post: {
         tags: ['Pagos'],
@@ -491,6 +516,31 @@ Desarrollado para **Fintech Andina S.A.C.** implementando fielmente el marco de 
         summary: 'Listar catálogo de productos disponibles',
         responses: {
           200: { description: 'Catálogo de productos' },
+        },
+      },
+      post: {
+        tags: ['Productos'],
+        summary: 'Registrar un nuevo producto o servicio financiable',
+        responses: {
+          201: { description: 'Producto creado' },
+        },
+      },
+    },
+    '/api/productos/{id}': {
+      put: {
+        tags: ['Productos'],
+        summary: 'Actualizar producto del catálogo',
+        responses: {
+          200: { description: 'Producto actualizado' },
+        },
+      },
+    },
+    '/api/productos/{id}/estado': {
+      patch: {
+        tags: ['Productos'],
+        summary: 'Activar o desactivar producto del catálogo',
+        responses: {
+          200: { description: 'Estado de producto actualizado' },
         },
       },
     },

@@ -14,7 +14,12 @@ export function createApp(repositories?: Repositories): Express {
   const repos = repositories ?? createInMemoryRepositories();
 
   // Middlewares estándar
-  app.use(cors());
+  app.use(
+    cors({
+      origin: true,
+      credentials: true,
+    })
+  );
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

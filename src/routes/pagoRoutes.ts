@@ -2,11 +2,17 @@ import { Router } from 'express';
 import { PagoController } from '../controllers/pagoController.js';
 import { Repositories } from '../infrastructure/inMemoryRepositories.js';
 import { validateBody } from '../middlewares/validateRequest.js';
-import { liquidarPagoSchema } from '../middlewares/schemas.js';
+import { liquidarPagoSchema, previsualizarPagoSchema } from '../middlewares/schemas.js';
 
 export function createPagoRouter(repos: Repositories): Router {
   const router = Router();
   const controller = new PagoController(repos);
+
+  /**
+   * POST /api/pagos/previsualizar
+   * Calcula el desglose exacto de cuota, mora e imputación legal sin persistir
+   */
+  router.post('/previsualizar', validateBody(previsualizarPagoSchema), controller.previsualizar);
 
   /**
    * POST /api/pagos/liquidar

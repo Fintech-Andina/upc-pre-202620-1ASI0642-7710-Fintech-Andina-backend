@@ -35,8 +35,124 @@ export interface RegistrarPagoOutput {
   pagos: Pago[];
 }
 
+export interface PrevisualizarPagoInput {
+  clienteId: string;
+  cuotaIds?: string[];
+  fPago?: string | Date;
+}
+
+export interface PrevisualizarPagoOutput {
+  clienteId: string;
+  moneda: string;
+  teaMora: number;
+  fechaPago: string;
+  totalExigibleBase: number;
+  totalInteresMoratorio: number;
+  totalExigible: number;
+  imputacionEstimada: {
+    moratorio: number;
+    compensatorio: number;
+    capital: number;
+  };
+  filas: Array<{
+    cuotaId: string;
+    creditoId: string;
+    k: number;
+    fechaVencimiento: string;
+    cuotaBase: number;
+    diasMora: number;
+    interesMoratorio: number;
+    totalCuotaConMora: number;
+    imputacion: {
+      moratorio: number;
+      compensatorio: number;
+      capital: number;
+    };
+  }>;
+}
+
 export class RegistrarPagoService {
   constructor(private repos: Repositories) {}
+
+  private async resolverCuotasExigibles(
+    clienteId: string,
+    nombreCliente: string,
+    fPagoISO: string,
+    cuotaIds?: string[]
+  ): Promise<Cuota[]> {
+    let cuotasPendientes: Cuota[] = [];
+
+    if (cuotaIds && cuotaIds.length > 0) {
+      for (const id of cuotaIds) {
+        const c = await this.repos.cuotas.obtenerPorId(id);
+        if (!c) {
+          throw new Error(`Cuota ID ${id} no encontrada`);
+        }
+        if (c.clienteId !== clienteId) {
+          throw new Error(`La cuota ID ${id} no pertenece al cliente ${nombreCliente}`);
+        }
+        if (c.estado === 'Pagada') {
+          throw new Error(`La cuota ID ${id} ya se encuentra pagada`);
+        }
+        cuotasPendientes.push(c);
+      }
+    } else {
+      const todasPendientes = await this.repos.cuotas.listarPendientesPorCliente(clienteId);
+      cuotasPendientes = todasPendientes.filter((c) => c.fechaVencimiento <= fPagoISO);
+      if (cuotasPendientes.length === 0 && todasPendientes.length > 0) {
+        cuotasPendientes = [todasPendientes[0]];
+      }
+    }
+
+    if (cuotasPendientes.length === 0) {
+      throw new Error('No hay cuotas exigibles o pendientes de pago para el cliente');
+    }
+
+    return cuotasPendientes;
+  }
+
+  async previsualizar(input: PrevisualizarPagoInput): Promise<PrevisualizarPagoOutput> {
+    const cliente = await this.repos.clientes.obtenerPorId(input.clienteId);
+    if (!cliente) {
+      throw new Error(`Cliente con ID ${input.clienteId} no encontrado`);
+    }
+
+    const fPagoDate = input.fPago ? parsearFecha(input.fPago) : new Date();
+    const fPagoISO = formatearFechaISO(fPagoDate);
+
+    const cuotasPendientes = await this.resolverCuotasExigibles(
+      cliente.id,
+      cliente.nombreCompleto,
+      fPagoISO,
+      input.cuotaIds
+    );
+
+    const cuotasParaCalculo = cuotasPendientes.map((c) => ({
+      k: c.numero,
+      fechaVencimiento: c.fechaVencimiento,
+      cuota: c.cuota,
+      interes: c.interes,
+      amortizacion: c.amortizacion,
+    }));
+
+    const resultado = liquidarPagoConMora(cuotasParaCalculo, fPagoDate, cliente.teaMora);
+
+    return {
+      clienteId: cliente.id,
+      moneda: cliente.moneda,
+      teaMora: cliente.teaMora,
+      fechaPago: fPagoISO,
+      totalExigibleBase: resultado.totalExigibleBase,
+      totalInteresMoratorio: resultado.totalInteresMoratorio,
+      totalExigible: resultado.totalPagar,
+      imputacionEstimada: resultado.imputacionTotal,
+      filas: resultado.filas.map((f, idx) => ({
+        cuotaId: cuotasPendientes[idx].id,
+        creditoId: cuotasPendientes[idx].creditoId,
+        ...f,
+      })),
+    };
+  }
 
   async ejecutar(input: RegistrarPagoInput): Promise<RegistrarPagoOutput> {
     const cliente = await this.repos.clientes.obtenerPorId(input.clienteId);
@@ -48,37 +164,12 @@ export class RegistrarPagoService {
     const fPagoISO = formatearFechaISO(fPagoDate);
 
     // 1. Obtener cuotas a liquidar
-    let cuotasPendientes: Cuota[] = [];
-
-    if (input.cuotaIds && input.cuotaIds.length > 0) {
-      for (const id of input.cuotaIds) {
-        const c = await this.repos.cuotas.obtenerPorId(id);
-        if (!c) {
-          throw new Error(`Cuota ID ${id} no encontrada`);
-        }
-        if (c.clienteId !== cliente.id) {
-          throw new Error(`La cuota ID ${id} no pertenece al cliente ${cliente.nombreCompleto}`);
-        }
-        if (c.estado === 'Pagada') {
-          throw new Error(`La cuota ID ${id} ya se encuentra pagada`);
-        }
-        cuotasPendientes.push(c);
-      }
-    } else {
-      // Si no especifica IDs, liquidar las cuotas vencidas/exigibles a la fecha de pago
-      const todasPendientes = await this.repos.cuotas.listarPendientesPorCliente(cliente.id);
-      cuotasPendientes = todasPendientes.filter(
-        (c) => c.fechaVencimiento <= fPagoISO
-      );
-      if (cuotasPendientes.length === 0 && todasPendientes.length > 0) {
-        // Si no hay vencidas pero hay pendientes, toma la más próxima a vencer
-        cuotasPendientes = [todasPendientes[0]];
-      }
-    }
-
-    if (cuotasPendientes.length === 0) {
-      throw new Error('No hay cuotas exigibles o pendientes de pago para el cliente');
-    }
+    const cuotasPendientes = await this.resolverCuotasExigibles(
+      cliente.id,
+      cliente.nombreCompleto,
+      fPagoISO,
+      input.cuotaIds
+    );
 
     // 2. Liquidar cálculo con mora y verificar pago parcial (A7 / F-7, F-8, F-9)
     const cuotasParaCalculo = cuotasPendientes.map((c) => ({

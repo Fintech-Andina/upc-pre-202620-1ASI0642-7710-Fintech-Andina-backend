@@ -67,6 +67,7 @@ model Producto {
   sku                String   @default(uuid())
   nombre             String
   marca              String?
+  proveedor          String?
   descripcion        String?
   unidad_medida      String?
   imagen_url         String?

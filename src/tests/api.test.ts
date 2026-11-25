@@ -503,4 +503,242 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
       expect(listB.body.data.some((c: any) => c.id === resB.body.data.id)).toBe(true);
     });
   });
+
+  describe('Endpoints Opción A: CRUD Productos, Clientes, Configuración, Previsualización Mora y Aislamiento CLIENTE', () => {
+    it('Crea, edita y cambia estado de productos con proveedor y auditoría en Bitacora', async () => {
+      const regRes = await request(app).post('/api/auth/register').send({
+        ruc: '20609998881',
+        razonSocial: 'Bodega Prueba E.I.R.L.',
+        nombreComercial: 'Bodega Prueba',
+        direccion: 'Av. Central 123',
+        email: 'tienda.prod@test.pe',
+        password: '12345678',
+      });
+      const token = regRes.body.data.token;
+
+      const createRes = await request(app)
+        .post('/api/productos')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          sku: 'SKU-TEST-01',
+          nombre: 'Refrigeradora Frost 250L',
+          marca: 'Samsung',
+          proveedor: 'Distribuidora Lima Sur S.A.C.',
+          descripcion: 'Electrodoméstico hogar',
+          unidadMedida: 'UNIDAD',
+          imagenUrl: 'https://example.com/refri.png',
+          precioContado: 1100,
+          precioLista: 1200,
+          permitePagoUnico: true,
+          permiteCuotas: true,
+        });
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.data.proveedor).toBe('Distribuidora Lima Sur S.A.C.');
+      const prodId = createRes.body.data.id;
+
+      const editRes = await request(app)
+        .put(`/api/productos/${prodId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          precioLista: 1250,
+          proveedor: 'Importadora Andina',
+        });
+      expect(editRes.status).toBe(200);
+      expect(editRes.body.data.precioLista).toBe(1250);
+      expect(editRes.body.data.proveedor).toBe('Importadora Andina');
+
+      const stateRes = await request(app)
+        .patch(`/api/productos/${prodId}/estado`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ activo: false });
+      expect(stateRes.status).toBe(200);
+      expect(stateRes.body.data.activo).toBe(false);
+
+      const bitacora = await repos.bitacora.listar(regRes.body.data.tienda.id);
+      expect(bitacora.some((b) => b.accion === 'CREAR_PRODUCTO' && b.idEntidad === prodId)).toBe(true);
+      expect(bitacora.some((b) => b.accion === 'EDITAR_PRODUCTO' && b.idEntidad === prodId)).toBe(true);
+      expect(bitacora.some((b) => b.accion === 'CAMBIO_ESTADO_PRODUCTO' && b.idEntidad === prodId)).toBe(true);
+    });
+
+    it('Edita y cambia estado de clientes validando topes BCRP y registrando en Bitacora', async () => {
+      const regRes = await request(app).post('/api/auth/register').send({
+        ruc: '20609998882',
+        direccion: 'Av. Test 222',
+        nombreComercial: 'Bodega Clientes',
+        email: 'tienda.cli@test.pe',
+        password: '12345678',
+      });
+      const token = regRes.body.data.token;
+
+      const cliRes = await request(app)
+        .post('/api/clientes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          nombreCompleto: 'Luis Ramos Vega',
+          tipoDoc: 'DNI',
+          numDoc: '40506070',
+          ingresosNetos: 2400,
+          moneda: 'PEN',
+          tipoTasa: 'Efectiva',
+          tasa: 0.3,
+          teaMora: 0.2,
+          diaCorte: 15,
+          diaPago: 25,
+          limiteCredito: 1800,
+          maxMeses: 6,
+        });
+      expect(cliRes.status).toBe(201);
+      const cliId = cliRes.body.data.id;
+
+      // Intento exceder tope BCRP en edición -> 400
+      const badEdit = await request(app)
+        .put(`/api/clientes/${cliId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ tasa: 1.5 });
+      expect(badEdit.status).toBe(400);
+      expect(badEdit.body.code).toBe('REGULATORY_LIMIT_EXCEEDED');
+
+      const goodEdit = await request(app)
+        .put(`/api/clientes/${cliId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ limiteCredito: 2500, telefono: '+51 999888777' });
+      expect(goodEdit.status).toBe(200);
+      expect(goodEdit.body.data.limiteCredito).toBe(2500);
+
+      const estadoRes = await request(app)
+        .patch(`/api/clientes/${cliId}/estado`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ activo: false });
+      expect(estadoRes.status).toBe(200);
+      expect(estadoRes.body.data.activo).toBe(false);
+
+      const bitacora = await repos.bitacora.listar(regRes.body.data.tienda.id);
+      expect(bitacora.some((b) => b.accion === 'CREAR_CLIENTE' && b.idEntidad === cliId)).toBe(true);
+      expect(bitacora.some((b) => b.accion === 'EDITAR_CLIENTE' && b.idEntidad === cliId)).toBe(true);
+      expect(bitacora.some((b) => b.accion === 'CAMBIO_ESTADO_CLIENTE' && b.idEntidad === cliId)).toBe(true);
+    });
+
+    it('Permite a ADMIN_NEGOCIO actualizar su tienda (PATCH /api/tiendas/mi-tienda) con Bitacora', async () => {
+      const regRes = await request(app).post('/api/auth/register').send({
+        ruc: '20609998883',
+        razonSocial: 'Mi Bodega S.A.C.',
+        nombreComercial: 'Mi Bodega',
+        direccion: 'Jr. Lima 100',
+        email: 'tienda.conf@test.pe',
+        password: '12345678',
+      });
+      const token = regRes.body.data.token;
+
+      const patchRes = await request(app)
+        .patch('/api/tiendas/mi-tienda')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          nombreComercial: 'Mi Bodega Renovada',
+          horaCorte: 20,
+          monedaDefecto: 'USD',
+        });
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.data.nombreComercial).toBe('Mi Bodega Renovada');
+      expect(patchRes.body.data.horaCorte).toBe(20);
+      expect(patchRes.body.data.monedaDefecto).toBe('USD');
+
+      const bitacora = await repos.bitacora.listar(regRes.body.data.tienda.id);
+      expect(bitacora.some((b) => b.accion === 'EDITAR_TIENDA')).toBe(true);
+    });
+
+    it('Previsualiza mora exacta en POST /api/pagos/previsualizar sin persistir y aísla créditos para CLIENTE', async () => {
+      // Crear 2 clientes con credenciales y emitir 1 crédito a cada uno
+      const c1 = await request(app).post('/api/clientes').send({
+        nombreCompleto: 'Cliente Uno',
+        email: 'c1@vecino.pe',
+        password: '12345678',
+        tipoDoc: 'DNI',
+        numDoc: '11223344',
+        ingresosNetos: 3000,
+        moneda: 'USD',
+        tipoTasa: 'Efectiva',
+        tasa: 0.2,
+        teaMora: 0.36,
+        diaCorte: 15,
+        diaPago: 15,
+        limiteCredito: 3000,
+        maxMeses: 12,
+      });
+      const c2 = await request(app).post('/api/clientes').send({
+        nombreCompleto: 'Cliente Dos',
+        email: 'c2@vecino.pe',
+        password: '12345678',
+        tipoDoc: 'DNI',
+        numDoc: '22334455',
+        ingresosNetos: 3000,
+        moneda: 'PEN',
+        tipoTasa: 'Efectiva',
+        tasa: 0.3,
+        teaMora: 0.2,
+        diaCorte: 15,
+        diaPago: 25,
+        limiteCredito: 3000,
+        maxMeses: 12,
+      });
+
+      const cr1 = await request(app).post('/api/creditos/emitir').send({
+        clienteId: c1.body.data.id,
+        precioLista: 2000,
+        modalidad: 'Cuotas',
+        plazoMeses: 4,
+        diasGracia: 0,
+        fCompra: '2026-05-15',
+      });
+      const cr2 = await request(app).post('/api/creditos/emitir').send({
+        clienteId: c2.body.data.id,
+        precioLista: 1000,
+        modalidad: 'Cuotas',
+        plazoMeses: 3,
+        diasGracia: 0,
+        fCompra: '2026-05-15',
+      });
+      expect(cr1.status).toBe(201);
+      expect(cr2.status).toBe(201);
+
+      // Previsualizar cuota 2 con 10 días de atraso (Caso 2: 519.28 + 4.45 = 523.73)
+      const cuota2 = cr1.body.data.cuotas[1];
+      const venc2 = new Date(cuota2.fechaVencimiento + 'T12:00:00');
+      venc2.setDate(venc2.getDate() + 10);
+      const fPago10d = venc2.toISOString().split('T')[0];
+
+      const prevMora = await request(app).post('/api/pagos/previsualizar').send({
+        clienteId: c1.body.data.id,
+        cuotaIds: [cuota2.id],
+        fPago: fPago10d,
+      });
+      expect(prevMora.status).toBe(200);
+      expect(prevMora.body.data.totalExigibleBase).toBe(519.28);
+      expect(prevMora.body.data.totalInteresMoratorio).toBe(4.45);
+      expect(prevMora.body.data.totalExigible).toBe(523.73);
+      expect(prevMora.body.data.filas[0].diasMora).toBe(10);
+
+      // Confirmar que no se persistió ningún pago
+      const pagosRes = await request(app).get(`/api/pagos/cliente/${c1.body.data.id}`);
+      expect(pagosRes.body.data).toHaveLength(0);
+
+      // Aislamiento de CLIENTE en GET /api/creditos y GET /api/creditos/:id
+      const loginC1 = await request(app).post('/api/auth/login-cliente').send({
+        email: 'c1@vecino.pe',
+        password: '12345678',
+      });
+      const tokenC1 = loginC1.body.data.token;
+
+      const listC1 = await request(app)
+        .get('/api/creditos')
+        .set('Authorization', `Bearer ${tokenC1}`);
+      expect(listC1.status).toBe(200);
+      expect(listC1.body.data.every((cr: any) => cr.clienteId === c1.body.data.id)).toBe(true);
+      expect(listC1.body.data.some((cr: any) => cr.id === cr2.body.data.credito.id)).toBe(false);
+
+      const ajenoCred = await request(app)
+        .get(`/api/creditos/${cr2.body.data.credito.id}`)
+        .set('Authorization', `Bearer ${tokenC1}`);
+      expect(ajenoCred.status).toBe(403);
+    });
+  });
 });

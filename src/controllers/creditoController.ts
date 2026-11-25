@@ -47,6 +47,16 @@ export class CreditoController {
 
   listar = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (req.user?.rol === 'CLIENTE' && req.user.clienteId) {
+        const creditosCliente = await this.repos.creditos.listarPorCliente(req.user.clienteId);
+        res.status(200).json({
+          status: 'success',
+          cantidad: creditosCliente.length,
+          data: creditosCliente,
+        });
+        return;
+      }
+
       const tiendaId = req.tienda?.id;
       const creditos = await this.repos.creditos.listarTodos(tiendaId);
       res.status(200).json({
@@ -68,6 +78,14 @@ export class CreditoController {
           status: 'error',
           code: 'NOT_FOUND',
           message: `Crédito con ID ${id} no encontrado`,
+        });
+        return;
+      }
+      if (req.user?.rol === 'CLIENTE' && credito.clienteId !== req.user.clienteId) {
+        res.status(403).json({
+          status: 'error',
+          code: 'FORBIDDEN_CLIENT_ACCESS',
+          message: 'Un cliente solo puede consultar el detalle de sus propios créditos',
         });
         return;
       }

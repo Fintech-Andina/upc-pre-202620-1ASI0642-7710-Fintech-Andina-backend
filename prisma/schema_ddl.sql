@@ -56,6 +56,7 @@ CREATE TABLE "Producto" (
     "sku" TEXT NOT NULL,
     "nombre" TEXT NOT NULL,
     "marca" TEXT,
+    "proveedor" TEXT,
     "descripcion" TEXT,
     "unidad_medida" TEXT,
     "imagen_url" TEXT,
