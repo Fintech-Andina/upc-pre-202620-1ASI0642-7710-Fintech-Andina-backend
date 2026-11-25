@@ -9,14 +9,45 @@ import { createApiRouter } from './routes/index.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { swaggerSpec } from './docs/swaggerSpec.js';
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, '');
+}
+
+function getAllowedOrigins(): string[] {
+  const raw = process.env.CORS_ORIGIN;
+  if (!raw || !raw.trim()) {
+    return ['http://localhost:5173'];
+  }
+
+  const parsed = raw
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+  return parsed.length > 0 ? parsed : ['http://localhost:5173'];
+}
+
 export function createApp(repositories?: Repositories): Express {
   const app = express();
   const repos = repositories ?? createInMemoryRepositories();
 
   // Middlewares estándar
+  const allowedOrigins = getAllowedOrigins();
   app.use(
     cors({
-      origin: true,
+      origin: (origin, callback) => {
+        // Permitir peticiones sin cabecera Origin (health checks, curl, Postman, supertest)
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        const normalizedOrigin = normalizeOrigin(origin);
+        if (allowedOrigins.includes('*') || allowedOrigins.includes(normalizedOrigin)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
       credentials: true,
     })
   );

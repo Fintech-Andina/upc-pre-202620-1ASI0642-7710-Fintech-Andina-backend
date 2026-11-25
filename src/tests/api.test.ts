@@ -750,4 +750,65 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
       expect(ajenoCred.status).toBe(403);
     });
   });
+
+  describe('CORS dinámico (CORS_ORIGIN)', () => {
+    it('Permite http://localhost:5173 por defecto y rechaza orígenes no autorizados cuando CORS_ORIGIN no está definido', async () => {
+      const originalCors = process.env.CORS_ORIGIN;
+      delete process.env.CORS_ORIGIN;
+      try {
+        const corsApp = createApp(repos);
+
+        const allowedRes = await request(corsApp)
+          .get('/api/health')
+          .set('Origin', 'http://localhost:5173');
+        expect(allowedRes.status).toBe(200);
+        expect(allowedRes.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+        expect(allowedRes.headers['access-control-allow-credentials']).toBe('true');
+
+        const blockedRes = await request(corsApp)
+          .get('/api/health')
+          .set('Origin', 'https://evil.example.com');
+        expect(blockedRes.status).toBe(200);
+        expect(blockedRes.headers['access-control-allow-origin']).toBeUndefined();
+      } finally {
+        if (originalCors === undefined) {
+          delete process.env.CORS_ORIGIN;
+        } else {
+          process.env.CORS_ORIGIN = originalCors;
+        }
+      }
+    });
+
+    it('Soporta múltiples orígenes separados por coma y normaliza barras finales /', async () => {
+      const originalCors = process.env.CORS_ORIGIN;
+      process.env.CORS_ORIGIN = 'http://localhost:5173/, https://defia-book.vercel.app/';
+      try {
+        const corsApp = createApp(repos);
+
+        const localRes = await request(corsApp)
+          .get('/api/health')
+          .set('Origin', 'http://localhost:5173');
+        expect(localRes.status).toBe(200);
+        expect(localRes.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+
+        const vercelRes = await request(corsApp)
+          .get('/api/health')
+          .set('Origin', 'https://defia-book.vercel.app');
+        expect(vercelRes.status).toBe(200);
+        expect(vercelRes.headers['access-control-allow-origin']).toBe('https://defia-book.vercel.app');
+
+        const blockedRes = await request(corsApp)
+          .get('/api/health')
+          .set('Origin', 'https://otro-origen.vercel.app');
+        expect(blockedRes.status).toBe(200);
+        expect(blockedRes.headers['access-control-allow-origin']).toBeUndefined();
+      } finally {
+        if (originalCors === undefined) {
+          delete process.env.CORS_ORIGIN;
+        } else {
+          process.env.CORS_ORIGIN = originalCors;
+        }
+      }
+    });
+  });
 });

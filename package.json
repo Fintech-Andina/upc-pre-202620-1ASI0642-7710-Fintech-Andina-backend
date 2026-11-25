@@ -6,7 +6,6 @@
   "type": "module",
   "packageManager": "pnpm@12.15.0",
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
