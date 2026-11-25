@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tienda {
+  id_tienda        String   @id @default(uuid())
+  ruc              String   @unique
+  razon_social     String
+  nombre_comercial String
+  direccion        String
+  telefono         String   @default("")
+  email            String   @unique
+  password_hash    String
+  rol              String   @default("ADMIN_NEGOCIO") // ADMIN_SISTEMA | ADMIN_NEGOCIO
+  moneda_defecto   String   @default("PEN")
+  hora_corte       Int      @default(18)
+  estado           String   @default("ACTIVO") // ACTIVO | INACTIVO
+  created_at       DateTime @default(now())
+
+  clientes  Cliente[]
+  productos Producto[]
+  creditos  Credito[]
+  bitacoras Bitacora[]
+}
+
+model Cliente {
+  id_cliente      String   @id @default(uuid())
+  id_tienda       String
+  tipo_doc        String
+  num_doc         String
+  nombres         String
+  apellidos       String
+  telefono        String?  @default("")
+  direccion       String?  @default("")
+  email           String?  @unique
+  password_hash   String?
+  ingresos_netos  Decimal  @db.Decimal(12, 2)
+  dia_corte       Int
+  dia_pago        Int
+  limite_credito  Decimal  @db.Decimal(12, 2)
+  capital_vigente Decimal  @default(0) @db.Decimal(12, 2)
+  max_meses       Int
+  moneda          String
+  tipo_tasa       String
+  valor_tasa      Decimal  @db.Decimal(10, 7)
+  capitalizacion  Int      @default(12)
+  tea_mora        Decimal  @db.Decimal(10, 7)
+  activo          Boolean  @default(true)
+  created_at      DateTime @default(now())
+
+  tienda   Tienda    @relation(fields: [id_tienda], references: [id_tienda], onDelete: Cascade)
+  creditos Credito[]
+  cuotas   Cuota[]
+  pagos    Pago[]
+
+  @@unique([id_tienda, num_doc])
+}
+
+model Producto {
+  id_producto        String   @id @default(uuid())
+  id_tienda          String
+  sku                String   @default(uuid())
+  nombre             String
+  marca              String?
+  descripcion        String?
+  unidad_medida      String?
+  imagen_url         String?
+  precio_contado     Decimal  @db.Decimal(12, 2)
+  precio_lista       Decimal  @db.Decimal(12, 2)
+  stock              Int      @default(0)
+  permite_cuotas     Boolean  @default(true)
+  permite_pago_unico Boolean  @default(true)
+  activo             Boolean  @default(true)
+  created_at         DateTime @default(now())
+
+  tienda   Tienda    @relation(fields: [id_tienda], references: [id_tienda], onDelete: Cascade)
+  creditos Credito[]
+
+  @@unique([id_tienda, sku])
+}
+
+model Credito {
+  id_credito           String   @id @default(uuid())
+  id_tienda            String
+  id_cliente           String
+  id_producto          String?
+  moneda               String   @default("PEN")
+  modalidad            String
+  plazo_cuotas         Int
+  fecha_compra         DateTime
+  fecha_corte          DateTime
+  fecha_primer_pago    DateTime
+  fecha_vencimiento    DateTime @default(now())
+  dias_gracia          Int
+  precio_contado       Decimal  @db.Decimal(12, 2)
+  precio_lista         Decimal  @db.Decimal(12, 2)
+  tipo_tasa            String   @default("Efectiva")
+  valor_tasa           Decimal  @default(0) @db.Decimal(10, 7)
+  capitalizacion       Int      @default(12)
+  capital_capitalizado Decimal  @db.Decimal(12, 2)
+  tea_aplicada         Decimal  @db.Decimal(10, 7)
+  tem_aplicada         Decimal  @db.Decimal(10, 7)
+  tea_mora             Decimal  @db.Decimal(10, 7)
+  cuota_referencial    Decimal  @db.Decimal(12, 2)
+  tcea                 Decimal  @db.Decimal(10, 7)
+  trea                 Decimal  @db.Decimal(10, 7)
+  estado               String   @default("VIGENTE") // VIGENTE, CANCELADO, VENCIDO
+  created_at           DateTime @default(now())
+
+  tienda   Tienda    @relation(fields: [id_tienda], references: [id_tienda], onDelete: Cascade)
+  cliente  Cliente   @relation(fields: [id_cliente], references: [id_cliente], onDelete: Cascade)
+  producto Producto? @relation(fields: [id_producto], references: [id_producto], onDelete: SetNull)
+  cuotas   Cuota[]
+  pagos    Pago[]
+}
+
+model Cuota {
+  id_cuota          String    @id @default(uuid())
+  id_credito        String
+  id_cliente        String
+  nro_cuota         Int
+  tipo_periodo      String    @default("Amortizacion")
+  fecha_vencimiento DateTime
+  saldo_inicial     Decimal   @db.Decimal(12, 2)
+  interes           Decimal   @db.Decimal(12, 2)
+  amortizacion      Decimal   @db.Decimal(12, 2)
+  cuota_monto       Decimal   @db.Decimal(12, 2)
+  saldo_final       Decimal   @db.Decimal(12, 2)
+  dias_desde_compra Int
+  estado            String    @default("PENDIENTE") // PENDIENTE, PAGADA, VENCIDA
+  dias_mora         Int       @default(0)
+  interes_moratorio Decimal   @default(0) @db.Decimal(12, 2)
+  total_pagado      Decimal   @default(0) @db.Decimal(12, 2)
+  fecha_pago        DateTime?
+
+  credito Credito @relation(fields: [id_credito], references: [id_credito], onDelete: Cascade)
+  cliente Cliente @relation(fields: [id_cliente], references: [id_cliente], onDelete: Cascade)
+  pagos   Pago[]
+}
+
+model Pago {
+  id_pago               String   @id @default(uuid())
+  id_cliente            String
+  id_credito            String
+  id_cuota              String?
+  fecha_pago            DateTime
+  monto_recibido        Decimal  @db.Decimal(12, 2)
+  dias_mora             Int
+  interes_moratorio     Decimal  @db.Decimal(12, 2)
+  interes_compensatorio Decimal  @db.Decimal(12, 2)
+  capital_amortizado    Decimal  @db.Decimal(12, 2)
+  metodo_pago           String   @default("EFECTIVO")
+  created_at            DateTime @default(now())
+
+  cliente Cliente @relation(fields: [id_cliente], references: [id_cliente], onDelete: Cascade)
+  credito Credito @relation(fields: [id_credito], references: [id_credito], onDelete: Cascade)
+  cuota   Cuota?  @relation(fields: [id_cuota], references: [id_cuota], onDelete: SetNull)
+}
+
+model Bitacora {
+  id_bitacora String   @id @default(uuid())
+  id_tienda   String?
+  usuario     String   @default("SISTEMA")
+  accion      String
+  entidad     String   @default("SISTEMA")
+  id_entidad  String?
+  detalle     String
+  fecha_hora  DateTime @default(now())
+
+  tienda Tienda? @relation(fields: [id_tienda], references: [id_tienda], onDelete: SetNull)
+}

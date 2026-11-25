@@ -5,6 +5,9 @@ import { createClienteRouter } from './clienteRoutes.js';
 import { createPagoRouter } from './pagoRoutes.js';
 import { createReporteRouter } from './reporteRoutes.js';
 import { createProductoRouter } from './productoRoutes.js';
+import { createAuthRouter } from './authRoutes.js';
+import { createTiendaRouter } from './tiendaRoutes.js';
+import { authMiddleware } from '../middlewares/authMiddleware.js';
 
 export function createApiRouter(repos: Repositories): Router {
   const router = Router();
@@ -19,11 +22,16 @@ export function createApiRouter(repos: Repositories): Router {
     });
   });
 
-  router.use('/creditos', createCreditoRouter(repos));
-  router.use('/clientes', createClienteRouter(repos));
-  router.use('/pagos', createPagoRouter(repos));
-  router.use('/reportes', createReporteRouter(repos));
-  router.use('/productos', createProductoRouter(repos));
+  // Rutas de Autenticación y Gestión de Tiendas (ADMIN_SISTEMA)
+  router.use('/auth', createAuthRouter(repos));
+  router.use('/tiendas', createTiendaRouter(repos));
+
+  // Rutas operativas con middleware JWT + aislamiento multi-tenant
+  router.use('/creditos', authMiddleware, createCreditoRouter(repos));
+  router.use('/clientes', authMiddleware, createClienteRouter(repos));
+  router.use('/pagos', authMiddleware, createPagoRouter(repos));
+  router.use('/reportes', authMiddleware, createReporteRouter(repos));
+  router.use('/productos', authMiddleware, createProductoRouter(repos));
 
   return router;
 }

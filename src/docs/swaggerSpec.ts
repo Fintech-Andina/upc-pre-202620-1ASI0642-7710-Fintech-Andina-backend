@@ -24,6 +24,14 @@ Desarrollado para **Fintech Andina S.A.C.** implementando fielmente el marco de 
   ],
   tags: [
     {
+      name: 'Autenticación',
+      description: 'Registro e inicio de sesión JWT (ADMIN_SISTEMA, ADMIN_NEGOCIO, CLIENTE)',
+    },
+    {
+      name: 'Tiendas',
+      description: 'Administración de tiendas afiliadas y alta/baja (exclusivo ADMIN_SISTEMA)',
+    },
+    {
       name: 'Créditos',
       description: 'Simulación financiera en tiempo real y emisión de créditos vecinales',
     },
@@ -49,6 +57,118 @@ Desarrollado para **Fintech Andina S.A.C.** implementando fielmente el marco de 
     },
   ],
   paths: {
+    '/api/auth/register': {
+      post: {
+        tags: ['Autenticación'],
+        summary: 'Registrar nueva tienda en la plataforma',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['ruc', 'direccion', 'email', 'password'],
+                properties: {
+                  ruc: { type: 'string', example: '20601234567' },
+                  razonSocial: { type: 'string', example: 'Bodega El Vecino E.I.R.L.' },
+                  nombreComercial: { type: 'string', example: 'Bodega El Vecino' },
+                  direccion: { type: 'string', example: 'Jr. Las Magnolias 245, Surco' },
+                  telefono: { type: 'string', example: '+51 987654321' },
+                  email: { type: 'string', example: 'donlucho@bodegaelvecino.pe' },
+                  password: { type: 'string', example: '12345678' },
+                  rol: { type: 'string', enum: ['ADMIN_NEGOCIO', 'ADMIN_SISTEMA'], example: 'ADMIN_NEGOCIO' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Tienda registrada y token JWT emitido' },
+        },
+      },
+    },
+    '/api/auth/login': {
+      post: {
+        tags: ['Autenticación'],
+        summary: 'Iniciar sesión (ADMIN_SISTEMA, ADMIN_NEGOCIO o CLIENTE)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['email', 'password'],
+                properties: {
+                  email: { type: 'string', example: 'donlucho@bodegaelvecino.pe' },
+                  password: { type: 'string', example: '12345678' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Autenticación exitosa y registro en Bitácora' },
+          401: { description: 'Credenciales inválidas' },
+        },
+      },
+    },
+    '/api/auth/login-cliente': {
+      post: {
+        tags: ['Autenticación'],
+        summary: 'Iniciar sesión como Vecino (rol CLIENTE)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['password'],
+                properties: {
+                  email: { type: 'string', example: 'carlos.quispe@vecino.pe' },
+                  numDoc: { type: 'string', example: '10234567' },
+                  password: { type: 'string', example: '12345678' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Token JWT de cliente emitido' },
+        },
+      },
+    },
+    '/api/tiendas/{id}/estado': {
+      patch: {
+        tags: ['Tiendas'],
+        summary: 'Activar o desactivar una tienda (Exclusivo ADMIN_SISTEMA)',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['estado'],
+                properties: {
+                  estado: { type: 'string', enum: ['ACTIVO', 'INACTIVO'], example: 'ACTIVO' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Estado de tienda actualizado' },
+          403: { description: 'Requiere rol ADMIN_SISTEMA' },
+        },
+      },
+    },
     '/api/creditos/simular': {
       post: {
         tags: ['Créditos'],

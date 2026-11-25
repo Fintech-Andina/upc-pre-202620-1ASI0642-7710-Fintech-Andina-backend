@@ -9,9 +9,10 @@ export class ReporteController {
     this.dashboardService = new DashboardReporteService(repos);
   }
 
-  dashboard = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  dashboard = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const metricas = await this.dashboardService.ejecutar();
+      const tiendaId = req.tienda?.id;
+      const metricas = await this.dashboardService.ejecutar(tiendaId);
       res.status(200).json({
         status: 'success',
         mensaje: 'Métricas de cartera y cobranza calculadas exitosamente',

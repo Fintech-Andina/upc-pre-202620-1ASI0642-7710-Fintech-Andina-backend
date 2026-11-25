@@ -1,6 +1,10 @@
 import dotenv from 'dotenv';
 import { createApp } from './app.js';
-import { createInMemoryRepositories } from './infrastructure/inMemoryRepositories.js';
+import {
+  createInMemoryRepositories,
+  Repositories,
+} from './infrastructure/inMemoryRepositories.js';
+import { createPrismaRepositories } from './infrastructure/prismaRepositories.js';
 import { seedInitialData } from './infrastructure/seedData.js';
 
 dotenv.config();
@@ -9,10 +13,20 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 
 async function bootstrap() {
-  const repos = createInMemoryRepositories();
+  const usePrisma = Boolean(process.env.DATABASE_URL) && process.env.NODE_ENV !== 'test';
+  let repos: Repositories;
 
-  // Precargar datos de demostración
-  const { tiendaId, cliente1Id, cliente2Id } = await seedInitialData(repos);
+  if (usePrisma) {
+    repos = createPrismaRepositories();
+    console.log('🗄️  Conectado a PostgreSQL mediante PrismaRepositories');
+  } else {
+    repos = createInMemoryRepositories();
+    const { tiendaId, cliente1Id, cliente2Id } = await seedInitialData(repos);
+    console.log('🧠 Modo InMemoryRepositories activado');
+    console.log(`[SEED] Tienda precargada ID: ${tiendaId}`);
+    console.log(`[SEED] Cliente 1 (PEN - Caso 1): ${cliente1Id}`);
+    console.log(`[SEED] Cliente 2 (USD - Caso 2): ${cliente2Id}`);
+  }
 
   const app = createApp(repos);
 
@@ -21,20 +35,20 @@ async function bootstrap() {
     console.log(`🚀 Servidor Defia Book Backend iniciado en http://${HOST}:${PORT}`);
     console.log('🏛️  Fintech Andina S.A.C. - Sistema de Crédito Vecinal');
     console.log('================================================================');
-    console.log(`[SEED] Tienda precargada ID: ${tiendaId}`);
-    console.log(`[SEED] Cliente 1 (PEN - Caso 1): ${cliente1Id}`);
-    console.log(`[SEED] Cliente 2 (USD - Caso 2): ${cliente2Id}`);
-    console.log('----------------------------------------------------------------');
     console.log(`📖 Documentación Swagger UI: http://${HOST}:${PORT}/api/docs`);
     console.log('----------------------------------------------------------------');
     console.log('Endpoints disponibles:');
-    console.log(`  POST http://${HOST}:${PORT}/api/creditos/simular`);
-    console.log(`  POST http://${HOST}:${PORT}/api/creditos/emitir`);
-    console.log(`  GET  http://${HOST}:${PORT}/api/clientes`);
-    console.log(`  GET  http://${HOST}:${PORT}/api/clientes/:id/estado-cuenta`);
-    console.log(`  POST http://${HOST}:${PORT}/api/pagos/liquidar`);
-    console.log(`  GET  http://${HOST}:${PORT}/api/reportes/dashboard`);
-    console.log(`  GET  http://${HOST}:${PORT}/api/productos`);
+    console.log(`  POST  http://${HOST}:${PORT}/api/auth/register`);
+    console.log(`  POST  http://${HOST}:${PORT}/api/auth/login`);
+    console.log(`  POST  http://${HOST}:${PORT}/api/auth/login-cliente`);
+    console.log(`  PATCH http://${HOST}:${PORT}/api/tiendas/:id/estado`);
+    console.log(`  POST  http://${HOST}:${PORT}/api/creditos/simular`);
+    console.log(`  POST  http://${HOST}:${PORT}/api/creditos/emitir`);
+    console.log(`  GET   http://${HOST}:${PORT}/api/clientes`);
+    console.log(`  GET   http://${HOST}:${PORT}/api/clientes/:id/estado-cuenta`);
+    console.log(`  POST  http://${HOST}:${PORT}/api/pagos/liquidar`);
+    console.log(`  GET   http://${HOST}:${PORT}/api/reportes/dashboard`);
+    console.log(`  GET   http://${HOST}:${PORT}/api/productos`);
     console.log('================================================================');
   });
 }

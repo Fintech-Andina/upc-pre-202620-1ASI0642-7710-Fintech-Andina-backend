@@ -29,7 +29,12 @@ export class CreditoController {
 
   emitir = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const resultado = await this.emitirService.ejecutar(req.body);
+      const input = {
+        ...req.body,
+        tiendaId: req.tienda?.id ?? req.body.tiendaId,
+        usuario: req.user?.email ?? req.body.usuario,
+      };
+      const resultado = await this.emitirService.ejecutar(input);
       res.status(201).json({
         status: 'success',
         mensaje: 'Crédito emitido y cronograma persistido exitosamente',
@@ -40,9 +45,10 @@ export class CreditoController {
     }
   };
 
-  listar = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listar = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const creditos = await this.repos.creditos.listarTodos();
+      const tiendaId = req.tienda?.id;
+      const creditos = await this.repos.creditos.listarTodos(tiendaId);
       res.status(200).json({
         status: 'success',
         cantidad: creditos.length,
@@ -57,7 +63,7 @@ export class CreditoController {
     try {
       const id = req.params.id as string;
       const credito = await this.repos.creditos.obtenerPorId(id);
-      if (!credito) {
+      if (!credito || (req.tienda?.id && credito.tiendaId !== req.tienda.id)) {
         res.status(404).json({
           status: 'error',
           code: 'NOT_FOUND',

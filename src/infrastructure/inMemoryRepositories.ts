@@ -37,17 +37,29 @@ export class InMemoryClienteRepository implements IClienteRepository {
     return cliente ? { ...cliente } : null;
   }
 
-  async obtenerPorDoc(numDoc: string): Promise<Cliente | null> {
+  async obtenerPorDoc(numDoc: string, tiendaId?: string): Promise<Cliente | null> {
     for (const c of this.clientes.values()) {
-      if (c.numDoc === numDoc) {
+      if (c.numDoc === numDoc && (!tiendaId || !c.tiendaId || c.tiendaId === tiendaId)) {
         return { ...c };
       }
     }
     return null;
   }
 
-  async listarTodos(): Promise<Cliente[]> {
-    return Array.from(this.clientes.values()).map((c) => ({ ...c }));
+  async obtenerPorEmail(email: string): Promise<Cliente | null> {
+    const normalized = email.trim().toLowerCase();
+    for (const c of this.clientes.values()) {
+      if (c.email && c.email.trim().toLowerCase() === normalized) {
+        return { ...c };
+      }
+    }
+    return null;
+  }
+
+  async listarTodos(tiendaId?: string): Promise<Cliente[]> {
+    return Array.from(this.clientes.values())
+      .filter((c) => !tiendaId || !c.tiendaId || c.tiendaId === tiendaId)
+      .map((c) => ({ ...c }));
   }
 
   async actualizar(id: string, parcial: Partial<Cliente>): Promise<Cliente | null> {
@@ -97,8 +109,10 @@ export class InMemoryCreditoRepository implements ICreditoRepository {
       .map((c) => ({ ...c }));
   }
 
-  async listarTodos(): Promise<Credito[]> {
-    return Array.from(this.creditos.values()).map((c) => ({ ...c }));
+  async listarTodos(tiendaId?: string): Promise<Credito[]> {
+    return Array.from(this.creditos.values())
+      .filter((c) => !tiendaId || c.tiendaId === tiendaId)
+      .map((c) => ({ ...c }));
   }
 
   async actualizar(id: string, parcial: Partial<Credito>): Promise<Credito | null> {
@@ -186,17 +200,19 @@ export class InMemoryProductoRepository implements IProductoRepository {
     return producto ? { ...producto } : null;
   }
 
-  async obtenerPorSku(sku: string): Promise<Producto | null> {
+  async obtenerPorSku(sku: string, tiendaId?: string): Promise<Producto | null> {
     for (const p of this.productos.values()) {
-      if (p.sku === sku) {
+      if (p.sku === sku && (!tiendaId || p.tiendaId === tiendaId)) {
         return { ...p };
       }
     }
     return null;
   }
 
-  async listarTodos(): Promise<Producto[]> {
-    return Array.from(this.productos.values()).map((p) => ({ ...p }));
+  async listarTodos(tiendaId?: string): Promise<Producto[]> {
+    return Array.from(this.productos.values())
+      .filter((p) => !tiendaId || p.tiendaId === tiendaId)
+      .map((p) => ({ ...p }));
   }
 
   async actualizar(id: string, parcial: Partial<Producto>): Promise<Producto | null> {
@@ -218,6 +234,8 @@ export class InMemoryTiendaRepository implements ITiendaRepository {
   async crear(datos: Omit<Tienda, 'id' | 'creadoEn'>): Promise<Tienda> {
     const id = uuidv4();
     const tienda: Tienda = {
+      rol: 'ADMIN_NEGOCIO',
+      estado: 'ACTIVO',
       ...datos,
       id,
       creadoEn: new Date().toISOString(),
@@ -231,8 +249,35 @@ export class InMemoryTiendaRepository implements ITiendaRepository {
     return tienda ? { ...tienda } : null;
   }
 
+  async obtenerPorEmail(email: string): Promise<Tienda | null> {
+    const normalized = email.trim().toLowerCase();
+    for (const t of this.tiendas.values()) {
+      if (t.email && t.email.trim().toLowerCase() === normalized) {
+        return { ...t };
+      }
+    }
+    return null;
+  }
+
+  async obtenerPorRuc(ruc: string): Promise<Tienda | null> {
+    for (const t of this.tiendas.values()) {
+      if (t.ruc === ruc) {
+        return { ...t };
+      }
+    }
+    return null;
+  }
+
   async listarTodas(): Promise<Tienda[]> {
     return Array.from(this.tiendas.values()).map((t) => ({ ...t }));
+  }
+
+  async actualizar(id: string, parcial: Partial<Tienda>): Promise<Tienda | null> {
+    const actual = this.tiendas.get(id);
+    if (!actual) return null;
+    const actualizado = { ...actual, ...parcial };
+    this.tiendas.set(id, actualizado);
+    return { ...actualizado };
   }
 
   limpiar(): void {
@@ -289,8 +334,10 @@ export class InMemoryBitacoraRepository implements IBitacoraRepository {
     return { ...registro };
   }
 
-  async listar(): Promise<Bitacora[]> {
-    return this.registros.map((r) => ({ ...r }));
+  async listar(tiendaId?: string): Promise<Bitacora[]> {
+    return this.registros
+      .filter((r) => !tiendaId || !r.tiendaId || r.tiendaId === tiendaId)
+      .map((r) => ({ ...r }));
   }
 
   limpiar(): void {
@@ -309,10 +356,11 @@ export interface Repositories {
   tiendas: ITiendaRepository;
   pagos: IPagoRepository;
   bitacora: IBitacoraRepository;
+  ejecutarTransaccion?: <T>(fn: (repos: Repositories) => Promise<T>) => Promise<T>;
 }
 
 export function createInMemoryRepositories(): Repositories {
-  return {
+  const repos: Repositories = {
     clientes: new InMemoryClienteRepository(),
     creditos: new InMemoryCreditoRepository(),
     cuotas: new InMemoryCuotaRepository(),
@@ -321,4 +369,8 @@ export function createInMemoryRepositories(): Repositories {
     pagos: new InMemoryPagoRepository(),
     bitacora: new InMemoryBitacoraRepository(),
   };
+  repos.ejecutarTransaccion = async <T>(fn: (r: Repositories) => Promise<T>): Promise<T> => {
+    return fn(repos);
+  };
+  return repos;
 }

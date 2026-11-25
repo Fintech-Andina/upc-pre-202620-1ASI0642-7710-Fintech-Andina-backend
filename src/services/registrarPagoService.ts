@@ -12,6 +12,7 @@ export interface RegistrarPagoInput {
   cuotaIds?: string[];
   fPago?: string | Date;
   montoRecibido: number;
+  metodoPago?: string;
   usuario?: string;
 }
 
@@ -95,76 +96,89 @@ export class RegistrarPagoService {
       input.montoRecibido
     );
 
-    // 3. Aplicar pagos y actualizar cuotas
-    const pagosGenerados: Pago[] = [];
-    const cuotasActualizadas: Cuota[] = [];
-    let capitalAmortizadoTotal = 0;
+    // 3. Aplicar pagos y actualizar cuotas de forma transaccional
+    const persistirPago = async (txRepos: Repositories): Promise<RegistrarPagoOutput> => {
+      const pagosGenerados: Pago[] = [];
+      const cuotasActualizadas: Cuota[] = [];
+      let capitalAmortizadoTotal = 0;
 
-    for (let i = 0; i < cuotasPendientes.length; i++) {
-      const cuotaOriginal = cuotasPendientes[i];
-      const filaLiq = resultadoLiquidacion.filas[i];
+      for (let i = 0; i < cuotasPendientes.length; i++) {
+        const cuotaOriginal = cuotasPendientes[i];
+        const filaLiq = resultadoLiquidacion.filas[i];
 
-      const pago = await this.repos.pagos.crear({
-        cuotaId: cuotaOriginal.id,
-        creditoId: cuotaOriginal.creditoId,
-        clienteId: cliente.id,
-        fechaPago: fPagoISO,
-        montoPagado: filaLiq.totalCuotaConMora,
-        diasMora: filaLiq.diasMora,
-        interesMoratorio: filaLiq.interesMoratorio,
-        interesCompensatorio: filaLiq.imputacion.compensatorio,
-        amortizacionCapital: filaLiq.imputacion.capital,
-      });
-      pagosGenerados.push(pago);
-
-      const cuotaActualizada = await this.repos.cuotas.actualizar(cuotaOriginal.id, {
-        estado: 'Pagada',
-        diasMora: filaLiq.diasMora,
-        interesMoratorio: filaLiq.interesMoratorio,
-        totalPagado: filaLiq.totalCuotaConMora,
-        fechaPago: fPagoISO,
-      });
-
-      if (cuotaActualizada) {
-        cuotasActualizadas.push(cuotaActualizada);
-      }
-
-      capitalAmortizadoTotal = r2(capitalAmortizadoTotal + filaLiq.imputacion.capital);
-
-      // Verificar si el crédito se canceló completamente
-      const cuotasCredito = await this.repos.cuotas.listarPorCredito(cuotaOriginal.creditoId);
-      const pendientesRestantes = cuotasCredito.filter((c) => c.estado !== 'Pagada' && c.id !== cuotaOriginal.id);
-      if (pendientesRestantes.length === 0) {
-        await this.repos.creditos.actualizar(cuotaOriginal.creditoId, {
-          estado: 'Cancelado',
+        const pago = await txRepos.pagos.crear({
+          cuotaId: cuotaOriginal.id,
+          creditoId: cuotaOriginal.creditoId,
+          clienteId: cliente.id,
+          fechaPago: fPagoISO,
+          montoPagado: filaLiq.totalCuotaConMora,
+          diasMora: filaLiq.diasMora,
+          interesMoratorio: filaLiq.interesMoratorio,
+          interesCompensatorio: filaLiq.imputacion.compensatorio,
+          amortizacionCapital: filaLiq.imputacion.capital,
+          metodoPago: input.metodoPago ?? 'EFECTIVO',
         });
+        pagosGenerados.push(pago);
+
+        const cuotaActualizada = await txRepos.cuotas.actualizar(cuotaOriginal.id, {
+          estado: 'Pagada',
+          diasMora: filaLiq.diasMora,
+          interesMoratorio: filaLiq.interesMoratorio,
+          totalPagado: filaLiq.totalCuotaConMora,
+          fechaPago: fPagoISO,
+        });
+
+        if (cuotaActualizada) {
+          cuotasActualizadas.push(cuotaActualizada);
+        }
+
+        capitalAmortizadoTotal = r2(capitalAmortizadoTotal + filaLiq.imputacion.capital);
+
+        // Verificar si el crédito se canceló completamente
+        const cuotasCredito = await txRepos.cuotas.listarPorCredito(cuotaOriginal.creditoId);
+        const pendientesRestantes = cuotasCredito.filter(
+          (c) => c.estado !== 'Pagada' && c.id !== cuotaOriginal.id
+        );
+        if (pendientesRestantes.length === 0) {
+          await txRepos.creditos.actualizar(cuotaOriginal.creditoId, {
+            estado: 'Cancelado',
+          });
+        }
       }
-    }
 
-    // 4. Actualizar capital vigente del cliente
-    const nuevoCapitalVigente = Math.max(0, r2(cliente.capitalVigente - capitalAmortizadoTotal));
-    await this.repos.clientes.actualizarCapitalVigente(cliente.id, nuevoCapitalVigente);
+      // 4. Actualizar capital vigente del cliente
+      const nuevoCapitalVigente = Math.max(0, r2(cliente.capitalVigente - capitalAmortizadoTotal));
+      await txRepos.clientes.actualizarCapitalVigente(cliente.id, nuevoCapitalVigente);
 
-    // 5. Bitácora
-    await this.repos.bitacora.registrar({
-      usuario: input.usuario ?? 'CAJERO',
-      accion: 'REGISTRO_PAGO',
-      detalle: `Pago procesado para cliente ${cliente.nombreCompleto}. Monto: ${resultadoLiquidacion.totalPagar.toFixed(2)} ${cliente.moneda}. Mora: ${resultadoLiquidacion.totalInteresMoratorio.toFixed(2)}, Amortización: ${capitalAmortizadoTotal.toFixed(2)}`,
-    });
+      // 5. Bitácora
+      await txRepos.bitacora.registrar({
+        tiendaId: cliente.tiendaId,
+        usuario: input.usuario ?? 'CAJERO',
+        accion: 'REGISTRO_PAGO',
+        entidad: 'Pago',
+        idEntidad: pagosGenerados[0]?.id,
+        detalle: `Pago procesado para cliente ${cliente.nombreCompleto}. Monto: ${resultadoLiquidacion.totalPagar.toFixed(2)} ${cliente.moneda}. Mora: ${resultadoLiquidacion.totalInteresMoratorio.toFixed(2)}, Amortización: ${capitalAmortizadoTotal.toFixed(2)}`,
+      });
 
-    return {
-      pagoRegistrado: {
-        clienteId: cliente.id,
-        totalExigibleBase: resultadoLiquidacion.totalExigibleBase,
-        totalInteresMoratorio: resultadoLiquidacion.totalInteresMoratorio,
-        totalPagado: resultadoLiquidacion.totalPagar,
-        fechaPago: fPagoISO,
-      },
-      imputacionLegal: resultadoLiquidacion.imputacionTotal,
-      cuotasAfectadas: cuotasActualizadas,
-      nuevoCapitalVigente,
-      lineaDisponible: r2(cliente.limiteCredito - nuevoCapitalVigente),
-      pagos: pagosGenerados,
+      return {
+        pagoRegistrado: {
+          clienteId: cliente.id,
+          totalExigibleBase: resultadoLiquidacion.totalExigibleBase,
+          totalInteresMoratorio: resultadoLiquidacion.totalInteresMoratorio,
+          totalPagado: resultadoLiquidacion.totalPagar,
+          fechaPago: fPagoISO,
+        },
+        imputacionLegal: resultadoLiquidacion.imputacionTotal,
+        cuotasAfectadas: cuotasActualizadas,
+        nuevoCapitalVigente,
+        lineaDisponible: r2(cliente.limiteCredito - nuevoCapitalVigente),
+        pagos: pagosGenerados,
+      };
     };
+
+    if (this.repos.ejecutarTransaccion) {
+      return this.repos.ejecutarTransaccion(persistirPago);
+    }
+    return persistirPago(this.repos);
   }
 }

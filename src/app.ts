@@ -36,6 +36,10 @@ export function createApp(repositories?: Repositories): Express {
       swaggerUi: 'http://localhost:3000/api/docs',
       documentacionRutas: {
         swagger: 'GET /api/docs',
+        authRegister: 'POST /api/auth/register',
+        authLogin: 'POST /api/auth/login',
+        authLoginCliente: 'POST /api/auth/login-cliente',
+        tiendasEstado: 'PATCH /api/tiendas/:id/estado',
         simular: 'POST /api/creditos/simular',
         emitir: 'POST /api/creditos/emitir',
         clientes: 'GET /api/clientes',

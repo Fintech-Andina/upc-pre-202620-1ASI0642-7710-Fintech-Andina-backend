@@ -50,14 +50,21 @@ export const liquidarPagoSchema = z.object({
   cuotaIds: z.array(z.string()).optional(),
   fPago: z.string().optional(),
   montoRecibido: z.number().positive('El monto recibido debe ser mayor a 0'),
+  metodoPago: z.string().optional().default('EFECTIVO'),
   usuario: z.string().optional().default('CAJERO'),
 });
 
 export const crearClienteSchema = z.object({
+  tiendaId: z.string().optional(),
   nombreCompleto: z.string().min(3, 'El nombre debe tener al menos 3 caracteres'),
+  nombres: z.string().optional(),
+  apellidos: z.string().optional(),
+  telefono: z.string().optional(),
+  direccion: z.string().optional(),
+  email: z.string().email('El formato de correo es inválido').optional(),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').optional(),
   tipoDoc: z.enum(['DNI', 'CE', 'RUC']),
   numDoc: z.string().refine((val) => {
-    // Si es DNI debe tener 8 dígitos
     return /^\d{8,11}$/.test(val);
   }, 'El número de documento debe tener entre 8 y 11 dígitos numéricos'),
   ingresosNetos: z.number().min(0, 'Los ingresos netos no pueden ser negativos'),
@@ -70,4 +77,40 @@ export const crearClienteSchema = z.object({
   diaPago: z.number().int().min(1).max(28, 'El día de pago debe estar entre 1 y 28'),
   limiteCredito: z.number().positive('El límite de crédito debe ser mayor a 0'),
   maxMeses: z.number().int().min(1, 'El plazo máximo debe ser de al menos 1 mes'),
+});
+
+export const registerTiendaSchema = z.object({
+  ruc: z.string().regex(/^\d{11}$/, 'El RUC debe tener 11 dígitos numéricos'),
+  razonSocial: z.string().min(3, 'La razón social es obligatoria').optional(),
+  nombreComercial: z.string().min(2, 'El nombre comercial es obligatorio').optional(),
+  nombre: z.string().min(2).optional(),
+  direccion: z.string().min(3, 'La dirección es obligatoria'),
+  telefono: z.string().optional().default(''),
+  email: z.string().email('Debe proporcionar un correo electrónico válido'),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  rol: z.enum(['ADMIN_SISTEMA', 'ADMIN_NEGOCIO']).optional().default('ADMIN_NEGOCIO'),
+  monedaDefecto: z.enum(['PEN', 'USD']).optional().default('PEN'),
+  horaCorte: z.number().int().min(0).max(23).optional().default(18),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email('Debe proporcionar un correo electrónico válido'),
+  password: z.string().min(1, 'La contraseña es obligatoria'),
+});
+
+export const loginClienteSchema = z
+  .object({
+    email: z.string().email().optional(),
+    numDoc: z.string().optional(),
+    tiendaId: z.string().optional(),
+    password: z.string().min(1, 'La contraseña es obligatoria'),
+  })
+  .refine((data) => Boolean(data.email || data.numDoc), {
+    message: 'Debe proporcionar email o numDoc del cliente',
+  });
+
+export const cambiarEstadoTiendaSchema = z.object({
+  estado: z.enum(['ACTIVO', 'INACTIVO'], {
+    error: 'El estado debe ser ACTIVO o INACTIVO',
+  }),
 });

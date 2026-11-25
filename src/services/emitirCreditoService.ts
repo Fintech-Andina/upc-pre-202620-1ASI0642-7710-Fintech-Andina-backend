@@ -51,10 +51,10 @@ export class EmitirCreditoService {
       throw new Error(`Validación regulatoria fallida: ${validacionRegulatoria.motivo}`);
     }
 
-    // Determinar precio de lista y precio de contado
+    // Determinar precio de lista y precio de contado (sin bloqueo por stock según alcance del enunciado)
     let PL = input.precioLista;
     let Pc = input.precioContado;
-    let tiendaId = input.tiendaId;
+    let tiendaId = input.tiendaId ?? cliente.tiendaId;
 
     if (input.productoId) {
       const producto = await this.repos.productos.obtenerPorId(input.productoId);
@@ -64,17 +64,16 @@ export class EmitirCreditoService {
       if (input.modalidad === 'Cuotas' && !producto.permiteCuotas) {
         throw new Error('El producto seleccionado no admite financiamiento en cuotas');
       }
-      if (producto.stock <= 0) {
-        throw new Error('El producto no cuenta con stock disponible');
+      if (
+        input.modalidad === 'PagoUnico' &&
+        producto.permitePagoUnico !== undefined &&
+        !producto.permitePagoUnico
+      ) {
+        throw new Error('El producto seleccionado no admite modalidad de pago único');
       }
       PL = PL ?? producto.precioLista;
       Pc = Pc ?? producto.precioContado;
       tiendaId = tiendaId ?? producto.tiendaId;
-
-      // Descontar stock
-      await this.repos.productos.actualizar(producto.id, {
-        stock: producto.stock - 1,
-      });
     }
 
     if (!PL || PL <= 0) {
@@ -188,57 +187,68 @@ export class EmitirCreditoService {
       }
     }
 
-    // Guardar Crédito
-    const creditoCreado = await this.repos.creditos.crear({
-      clienteId: cliente.id,
-      tiendaId,
-      productoId: input.productoId,
-      moneda: cliente.moneda,
-      modalidad: input.modalidad,
-      precioLista: PL,
-      precioContado: Pc,
-      tipoTasa: cliente.tipoTasa,
-      valorTasa: cliente.tasa,
-      capitalizacion: cliente.capitalizacion,
-      tea,
-      tem,
-      teaMora: cliente.teaMora,
-      plazoMeses: n,
-      diasGracia,
-      capitalCapitalizado,
-      cuota: cuotaReferencial,
-      tcea,
-      trea,
-      fechaEmision: formatearFechaISO(fCompraDate),
-      fechaCorte: formatearFechaISO(ciclo.corte),
-      primeraFechaPago: formatearFechaISO(ciclo.primeraFechaPago),
-      fechaVencimiento: fechaVencimientoFinal,
-      estado: 'Activo',
-    });
-
-    // Asignar creditoId y persistir cuotas
-    const cuotasConCreditoId = cuotasParaCrear.map((c) => ({
-      ...c,
-      creditoId: creditoCreado.id,
-    }));
-    const cuotasCreadas = await this.repos.cuotas.crearMuchas(cuotasConCreditoId);
-
-    // Actualizar capital vigente del cliente (F-17)
     const nuevoCapitalVigente = r2(cliente.capitalVigente + PL);
-    await this.repos.clientes.actualizarCapitalVigente(cliente.id, nuevoCapitalVigente);
+    const tiendaEmisoraId = tiendaId;
+    const precioListaFinal = PL;
+    const precioContadoFinal = Pc;
 
-    // Bitácora
-    await this.repos.bitacora.registrar({
-      usuario: input.usuario ?? 'SISTEMA',
-      accion: 'EMISION_CREDITO',
-      detalle: `Crédito emitido ID: ${creditoCreado.id} para cliente ${cliente.nombreCompleto}. Monto PL: ${PL.toFixed(2)} ${cliente.moneda}, Cuotas: ${n}, TCEA: ${(tcea * 100).toFixed(2)}%`,
-    });
+    // Persistencia atómica (transaccional en Prisma)
+    const persistirOperacion = async (txRepos: Repositories): Promise<EmitirCreditoOutput> => {
+      const creditoCreado = await txRepos.creditos.crear({
+        clienteId: cliente.id,
+        tiendaId: tiendaEmisoraId,
+        productoId: input.productoId,
+        moneda: cliente.moneda,
+        modalidad: input.modalidad,
+        precioLista: precioListaFinal,
+        precioContado: precioContadoFinal,
+        tipoTasa: cliente.tipoTasa,
+        valorTasa: cliente.tasa,
+        capitalizacion: cliente.capitalizacion,
+        tea,
+        tem,
+        teaMora: cliente.teaMora,
+        plazoMeses: n,
+        diasGracia,
+        capitalCapitalizado,
+        cuota: cuotaReferencial,
+        tcea,
+        trea,
+        fechaEmision: formatearFechaISO(fCompraDate),
+        fechaCorte: formatearFechaISO(ciclo.corte),
+        primeraFechaPago: formatearFechaISO(ciclo.primeraFechaPago),
+        fechaVencimiento: fechaVencimientoFinal,
+        estado: 'Activo',
+      });
 
-    return {
-      credito: creditoCreado,
-      cuotas: cuotasCreadas,
-      nuevoCapitalVigente,
-      lineaDisponible: r2(cliente.limiteCredito - nuevoCapitalVigente),
+      const cuotasConCreditoId = cuotasParaCrear.map((c) => ({
+        ...c,
+        creditoId: creditoCreado.id,
+      }));
+      const cuotasCreadas = await txRepos.cuotas.crearMuchas(cuotasConCreditoId);
+
+      await txRepos.clientes.actualizarCapitalVigente(cliente.id, nuevoCapitalVigente);
+
+      await txRepos.bitacora.registrar({
+        tiendaId: tiendaEmisoraId,
+        usuario: input.usuario ?? 'SISTEMA',
+        accion: 'EMISION_CREDITO',
+        entidad: 'Credito',
+        idEntidad: creditoCreado.id,
+        detalle: `Crédito emitido ID: ${creditoCreado.id} para cliente ${cliente.nombreCompleto}. Monto PL: ${precioListaFinal.toFixed(2)} ${cliente.moneda}, Cuotas: ${n}, TCEA: ${(tcea * 100).toFixed(2)}%`,
+      });
+
+      return {
+        credito: creditoCreado,
+        cuotas: cuotasCreadas,
+        nuevoCapitalVigente,
+        lineaDisponible: r2(cliente.limiteCredito - nuevoCapitalVigente),
+      };
     };
+
+    if (this.repos.ejecutarTransaccion) {
+      return this.repos.ejecutarTransaccion(persistirOperacion);
+    }
+    return persistirOperacion(this.repos);
   }
 }

@@ -1,5 +1,7 @@
 import { Moneda, TipoTasa, ModalidadCredito } from '../core/financialEngine.js';
 
+export type RolUsuario = 'ADMIN_SISTEMA' | 'ADMIN_NEGOCIO' | 'CLIENTE';
+
 export interface Tienda {
   id: string;
   nombre: string;
@@ -9,13 +11,27 @@ export interface Tienda {
   monedaDefecto: Moneda;
   horaCorte: number; // Por defecto 18 (6:00 PM)
   creadoEn: string;
+  // Campos extendidos de persistencia y autenticación
+  razonSocial?: string;
+  nombreComercial?: string;
+  email?: string;
+  passwordHash?: string;
+  rol?: 'ADMIN_SISTEMA' | 'ADMIN_NEGOCIO';
+  estado?: string; // ACTIVO | INACTIVO
 }
 
 export type TipoDocumento = 'DNI' | 'CE' | 'RUC';
 
 export interface Cliente {
   id: string;
+  tiendaId?: string;
   nombreCompleto: string;
+  nombres?: string;
+  apellidos?: string;
+  telefono?: string;
+  direccion?: string;
+  email?: string;
+  passwordHash?: string;
   tipoDoc: TipoDocumento;
   numDoc: string;
   ingresosNetos: number;
@@ -38,9 +54,15 @@ export interface Producto {
   tiendaId: string;
   sku: string;
   nombre: string;
+  marca?: string;
+  descripcion?: string;
+  unidadMedida?: string;
+  imagenUrl?: string;
   precioLista: number; // PL
   precioContado: number; // Pc
   permiteCuotas: boolean;
+  permitePagoUnico?: boolean;
+  activo?: boolean;
   stock: number;
   creadoEn: string;
 }
@@ -110,13 +132,17 @@ export interface Pago {
   interesMoratorio: number;
   interesCompensatorio: number;
   amortizacionCapital: number;
+  metodoPago?: string;
   creadoEn: string;
 }
 
 export interface Bitacora {
   id: string;
+  tiendaId?: string;
   usuario: string;
   accion: string;
+  entidad?: string;
+  idEntidad?: string;
   detalle: string;
   fecha: string;
 }

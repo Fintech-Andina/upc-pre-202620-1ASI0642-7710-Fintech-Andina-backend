@@ -333,4 +333,174 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
       expect(data.volumenOperativo.totalCreditosEmitidos).toBe(1);
     });
   });
+
+  describe('Autenticación JWT, 3 Roles (ADMIN_SISTEMA, ADMIN_NEGOCIO, CLIENTE) y Aislamiento Multi-Tienda', () => {
+    it('Registra y autentica una tienda (ADMIN_NEGOCIO) y registra el login en Bitácora', async () => {
+      const regRes = await request(app).post('/api/auth/register').send({
+        ruc: '20609998887',
+        razonSocial: 'Bodega El Vecino E.I.R.L.',
+        nombreComercial: 'Bodega El Vecino',
+        direccion: 'Jr. Las Magnolias 245, Surco',
+        email: 'donlucho@bodegaelvecino.pe',
+        password: '12345678',
+      });
+
+      expect(regRes.status).toBe(201);
+      expect(regRes.body.data.token).toBeDefined();
+      expect(regRes.body.data.rol).toBe('ADMIN_NEGOCIO');
+
+      const loginRes = await request(app).post('/api/auth/login').send({
+        email: 'donlucho@bodegaelvecino.pe',
+        password: '12345678',
+      });
+
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.data.token).toBeDefined();
+
+      const bitacora = await repos.bitacora.listar();
+      expect(bitacora.some((b) => b.accion === 'LOGIN')).toBe(true);
+    });
+
+    it('Permite a ADMIN_SISTEMA activar/desactivar tiendas (PATCH /api/tiendas/:id/estado) y bloquea a ADMIN_NEGOCIO', async () => {
+      const adminRes = await request(app).post('/api/auth/register').send({
+        ruc: '20600000001',
+        razonSocial: 'Fintech Andina S.A.C.',
+        nombreComercial: 'Fintech Andina Admin',
+        direccion: 'Av. Javier Prado 456',
+        email: 'admin@fintechandina.pe',
+        password: '12345678',
+        rol: 'ADMIN_SISTEMA',
+      });
+      const adminToken = adminRes.body.data.token;
+
+      const tiendaRes = await request(app).post('/api/auth/register').send({
+        ruc: '20601112223',
+        razonSocial: 'Minimarket Sur E.I.R.L.',
+        nombreComercial: 'Minimarket Sur',
+        direccion: 'Av. Surco 100',
+        email: 'sur@minimarket.pe',
+        password: '12345678',
+      });
+      const tiendaToken = tiendaRes.body.data.token;
+      const tiendaId = tiendaRes.body.data.tienda.id;
+
+      // Intento con ADMIN_NEGOCIO -> 403
+      const forbiddenRes = await request(app)
+        .patch(`/api/tiendas/${tiendaId}/estado`)
+        .set('Authorization', `Bearer ${tiendaToken}`)
+        .send({ estado: 'INACTIVO' });
+      expect(forbiddenRes.status).toBe(403);
+
+      // Con ADMIN_SISTEMA -> 200
+      const patchRes = await request(app)
+        .patch(`/api/tiendas/${tiendaId}/estado`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ estado: 'INACTIVO' });
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.data.estado).toBe('INACTIVO');
+
+      // Tienda inactiva no puede iniciar sesión
+      const loginInactivo = await request(app).post('/api/auth/login').send({
+        email: 'sur@minimarket.pe',
+        password: '12345678',
+      });
+      expect(loginInactivo.status).toBe(403);
+    });
+
+    it('Permite login de CLIENTE y restringe consulta de estado de cuenta solo a su propio ID', async () => {
+      // Crear cliente con credenciales
+      const crearRes = await request(app).post('/api/clientes').send({
+        nombreCompleto: 'Vecino Con Acceso',
+        email: 'vecino@correo.pe',
+        password: '12345678',
+        tipoDoc: 'DNI',
+        numDoc: '87654321',
+        ingresosNetos: 2500,
+        moneda: 'PEN',
+        tipoTasa: 'Efectiva',
+        tasa: 0.3,
+        teaMora: 0.2,
+        diaCorte: 15,
+        diaPago: 25,
+        limiteCredito: 1500,
+        maxMeses: 6,
+      });
+      expect(crearRes.status).toBe(201);
+      const clienteId = crearRes.body.data.id;
+
+      const loginCli = await request(app).post('/api/auth/login-cliente').send({
+        email: 'vecino@correo.pe',
+        password: '12345678',
+      });
+      expect(loginCli.status).toBe(200);
+      const cliToken = loginCli.body.data.token;
+
+      // Puede ver su propio estado de cuenta
+      const propioRes = await request(app)
+        .get(`/api/clientes/${clienteId}/estado-cuenta`)
+        .set('Authorization', `Bearer ${cliToken}`);
+      expect(propioRes.status).toBe(200);
+
+      // No puede ver el estado de cuenta de otro vecino
+      const ajenoRes = await request(app)
+        .get(`/api/clientes/${seedIds.cliente1Id}/estado-cuenta`)
+        .set('Authorization', `Bearer ${cliToken}`);
+      expect(ajenoRes.status).toBe(403);
+    });
+
+    it('Aísla clientes por tienda (Multi-Tenant) permitiendo el mismo DNI en dos tiendas distintas', async () => {
+      const t1 = await request(app).post('/api/auth/register').send({
+        ruc: '20603334441',
+        direccion: 'Calle 1',
+        nombre: 'Tienda A',
+        email: 'tiendaa@test.pe',
+        password: '12345678',
+      });
+      const t2 = await request(app).post('/api/auth/register').send({
+        ruc: '20603334442',
+        direccion: 'Calle 2',
+        nombre: 'Tienda B',
+        email: 'tiendab@test.pe',
+        password: '12345678',
+      });
+
+      const tokenA = t1.body.data.token;
+      const tokenB = t2.body.data.token;
+
+      const payloadVecino = {
+        nombreCompleto: 'Vecino Compartido',
+        tipoDoc: 'DNI',
+        numDoc: '44556677',
+        ingresosNetos: 3000,
+        moneda: 'PEN',
+        tipoTasa: 'Efectiva',
+        tasa: 0.25,
+        teaMora: 0.15,
+        diaCorte: 10,
+        diaPago: 20,
+        limiteCredito: 1000,
+        maxMeses: 6,
+      };
+
+      const resA = await request(app)
+        .post('/api/clientes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send(payloadVecino);
+      expect(resA.status).toBe(201);
+
+      const resB = await request(app)
+        .post('/api/clientes')
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send(payloadVecino);
+      expect(resB.status).toBe(201);
+
+      // Al listar con tokenB solo ve los clientes de Tienda B (o sin tiendaId global)
+      const listB = await request(app)
+        .get('/api/clientes')
+        .set('Authorization', `Bearer ${tokenB}`);
+      expect(listB.status).toBe(200);
+      expect(listB.body.data.some((c: any) => c.id === resA.body.data.id)).toBe(false);
+      expect(listB.body.data.some((c: any) => c.id === resB.body.data.id)).toBe(true);
+    });
+  });
 });

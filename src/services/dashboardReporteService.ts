@@ -27,10 +27,10 @@ export interface DashboardReporteOutput {
 export class DashboardReporteService {
   constructor(private repos: Repositories) {}
 
-  async ejecutar(): Promise<DashboardReporteOutput> {
-    const clientes = await this.repos.clientes.listarTodos();
-    const creditos = await this.repos.creditos.listarTodos();
-    const pagos = await this.repos.pagos.listarTodos();
+  async ejecutar(tiendaId?: string): Promise<DashboardReporteOutput> {
+    const clientes = await this.repos.clientes.listarTodos(tiendaId);
+    const creditos = await this.repos.creditos.listarTodos(tiendaId);
+    const pagos = await this.repos.pagos.listarTodos(tiendaId);
 
     const hoyISO = formatearFechaISO(new Date());
 
@@ -84,7 +84,11 @@ export class DashboardReporteService {
     let totalInteresCompensatorioRecaudado = 0;
     let totalInteresMoratorioRecaudado = 0;
 
+    const clienteIdsSet = new Set(clientes.map((c) => c.id));
     for (const p of pagos) {
+      if (tiendaId && !clienteIdsSet.has(p.clienteId)) {
+        continue;
+      }
       totalRecaudado = r2(totalRecaudado + p.montoPagado);
       totalCapitalRecuperado = r2(totalCapitalRecuperado + p.amortizacionCapital);
       totalInteresCompensatorioRecaudado = r2(
