@@ -79,8 +79,11 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
       expect(data.cuotaReferencial).toBe(285.2);
       expect(data.totalPagar).toBe(1711.21);
       expect((data.tcea * 100).toFixed(2)).toBe('42.57');
+      expect(data.primeraFechaPago).toBe('2026-03-25');
       expect(data.cronograma).toHaveLength(6);
+      expect(data.cronograma[0].fechaVencimiento).toBe('2026-04-25');
       expect(data.cronograma[0].cuota).toBe(285.2);
+      expect(data.cronograma[5].fechaVencimiento).toBe('2026-09-25');
       expect(data.cronograma[5].cuota).toBe(285.21);
       expect(data.cronograma[5].saldoFinal).toBe(0.0);
     });
@@ -103,8 +106,11 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
 
       expect(res.status).toBe(200);
       const data = res.body.data;
+      expect(data.primeraFechaPago).toBe('2026-06-15');
       expect(data.cuotaReferencial).toBe(519.28);
+      expect(data.cronograma[0].fechaVencimiento).toBe('2026-06-15');
       expect(data.cronograma[0].cuota).toBe(519.28);
+      expect(data.cronograma[3].fechaVencimiento).toBe('2026-09-15');
       expect(data.cronograma[3].cuota).toBe(519.29);
       expect(data.cronograma[3].saldoFinal).toBe(0.0);
       expect((data.tcea * 100).toFixed(2)).toBe('20.00');
@@ -146,7 +152,10 @@ describe('API RESTful Endpoints - Defia Book Backend', () => {
       const data = res.body.data;
 
       expect(data.credito.precioLista).toBe(1500.0);
+      expect(data.credito.primeraFechaPago).toBe('2026-03-25');
+      expect(data.credito.fechaVencimiento).toBe('2026-09-25');
       expect(data.cuotas).toHaveLength(6);
+      expect(data.cuotas[0].fechaVencimiento).toBe('2026-04-25');
       expect(data.nuevoCapitalVigente).toBe(1500.0);
       expect(data.lineaDisponible).toBe(1500.0); // 3000 - 1500
 

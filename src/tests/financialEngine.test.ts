@@ -64,6 +64,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Cuota 1
       expect(resultado.filas[0]).toMatchObject({
         k: 1,
+        fechaVencimiento: '2026-05-15',
         saldoInicial: 1545.0,
         interes: 46.35,
         amortizacion: 238.85,
@@ -75,6 +76,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Cuota 2
       expect(resultado.filas[1]).toMatchObject({
         k: 2,
+        fechaVencimiento: '2026-06-15',
         saldoInicial: 1306.15,
         interes: 39.18,
         amortizacion: 246.02,
@@ -86,6 +88,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Cuota 3
       expect(resultado.filas[2]).toMatchObject({
         k: 3,
+        fechaVencimiento: '2026-07-15',
         saldoInicial: 1060.13,
         interes: 31.8,
         amortizacion: 253.4,
@@ -97,6 +100,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Cuota 4
       expect(resultado.filas[3]).toMatchObject({
         k: 4,
+        fechaVencimiento: '2026-08-15',
         saldoInicial: 806.73,
         interes: 24.2,
         amortizacion: 261.0,
@@ -108,6 +112,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Cuota 5
       expect(resultado.filas[4]).toMatchObject({
         k: 5,
+        fechaVencimiento: '2026-09-15',
         saldoInicial: 545.73,
         interes: 16.37,
         amortizacion: 268.83,
@@ -119,6 +124,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Cuota 6 (Ajuste final por redondeo)
       expect(resultado.filas[5]).toMatchObject({
         k: 6,
+        fechaVencimiento: '2026-10-15',
         saldoInicial: 276.9,
         interes: 8.31,
         amortizacion: 276.9,
@@ -159,6 +165,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
 
       expect(resultado.filas[0]).toMatchObject({
         k: 1,
+        fechaVencimiento: '2026-05-15',
         saldoInicial: 2000.0,
         interes: 30.62,
         amortizacion: 488.66,
@@ -168,6 +175,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
 
       expect(resultado.filas[1]).toMatchObject({
         k: 2,
+        fechaVencimiento: '2026-06-15',
         saldoInicial: 1511.34,
         interes: 23.14,
         amortizacion: 496.14,
@@ -177,6 +185,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
 
       expect(resultado.filas[2]).toMatchObject({
         k: 3,
+        fechaVencimiento: '2026-07-15',
         saldoInicial: 1015.2,
         interes: 15.54,
         amortizacion: 503.74,
@@ -186,6 +195,7 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
 
       expect(resultado.filas[3]).toMatchObject({
         k: 4,
+        fechaVencimiento: '2026-08-15',
         saldoInicial: 511.46,
         interes: 7.83,
         amortizacion: 511.46,
@@ -320,6 +330,48 @@ describe('Motor Financiero Puro - Defia Book (Fórmulas F-1 a F-17 y Algoritmos 
       // Día de corte inválido (> 28)
       const clienteDiaInvalido = { ...clienteValido, diaCorte: 31 };
       expect(validarParametrosCliente(clienteDiaInvalido).valido).toBe(false);
+    });
+
+    it('A4: En modalidad Cuotas con gracia total (g > 0), cuota k vence en AgregarMeses(F0, k)', () => {
+      // Ejemplo del enunciado: compra 15/09, corte 20, pago 26 -> F0 = 26/09 (g = 11) -> Cuota 1 el 26/10
+      const cicloEnunciado = determinarCiclo('2026-09-15', 20, 26, 18);
+      expect(cicloEnunciado.diasGracia).toBe(11);
+      expect(cicloEnunciado.primeraFechaPago.getFullYear()).toBe(2026);
+      expect(cicloEnunciado.primeraFechaPago.getMonth()).toBe(8); // Septiembre
+      expect(cicloEnunciado.primeraFechaPago.getDate()).toBe(26);
+
+      const cronoEnunciado = generarCronogramaFrances(
+        1000,
+        0.3,
+        cicloEnunciado.diasGracia,
+        3,
+        cicloEnunciado.primeraFechaPago
+      );
+      expect(cronoEnunciado.filas[0].fechaVencimiento).toBe('2026-10-26');
+      expect(cronoEnunciado.filas[0].tK).toBe(41);
+      expect(cronoEnunciado.filas[1].fechaVencimiento).toBe('2026-11-26');
+      expect(cronoEnunciado.filas[1].tK).toBe(71);
+      expect(cronoEnunciado.filas[2].fechaVencimiento).toBe('2026-12-26');
+      expect(cronoEnunciado.filas[2].tK).toBe(101);
+
+      // Caso detectado en vivo: compra 25/11/2026, corte 5, pago 15 -> F0 = 15/12/2026 (g = 20) -> Cuota 1 el 15/01/2027
+      const cicloVivo = determinarCiclo('2026-11-25', 5, 15, 18);
+      expect(cicloVivo.diasGracia).toBe(20);
+      expect(cicloVivo.primeraFechaPago.getFullYear()).toBe(2026);
+      expect(cicloVivo.primeraFechaPago.getMonth()).toBe(11); // Diciembre
+      expect(cicloVivo.primeraFechaPago.getDate()).toBe(15);
+
+      const cronoVivo = generarCronogramaFrances(
+        1200,
+        0.3,
+        cicloVivo.diasGracia,
+        2,
+        cicloVivo.primeraFechaPago
+      );
+      expect(cronoVivo.filas[0].fechaVencimiento).toBe('2027-01-15');
+      expect(cronoVivo.filas[0].tK).toBe(50);
+      expect(cronoVivo.filas[1].fechaVencimiento).toBe('2027-02-15');
+      expect(cronoVivo.filas[1].tK).toBe(80);
     });
   });
 });

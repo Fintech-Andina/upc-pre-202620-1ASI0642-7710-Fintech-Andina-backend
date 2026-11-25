@@ -348,10 +348,11 @@ export function generarCronogramaFrances(
     // F-14: tk = g + 30 * k
     const tK = diasGracia + 30 * k;
 
-    // Fecha de vencimiento: cuota k vence en F0 + (k - 1) meses si F0 ya es la primera fecha de pago,
-    // o agregando meses correspondientes. Según A4: fechaK = AgregarMeses(F0, k - 1 o k).
-    // Si F0 es la primera fecha de pago (cuota 1), cuota 1 vence en F0, cuota 2 en F0 + 1 mes, etc.
-    const fechaK = agregarMeses(f0Date, k - 1, diaPago);
+    // En modalidad Cuotas con gracia total (g > 0), F0 marca el fin de la gracia total (periodo 0),
+    // por lo que la cuota k (tK = g + 30*k) vence k meses después de F0: AgregarMeses(F0, k).
+    // Cuando g === 0, F0 ya corresponde al vencimiento del primer mes (k = 1): AgregarMeses(F0, k - 1).
+    const mesesOffset = diasGracia > 0 ? k : k - 1;
+    const fechaK = agregarMeses(f0Date, mesesOffset, diaPago);
 
     filas.push({
       k,
